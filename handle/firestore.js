@@ -15,6 +15,7 @@ import {
   setDoc,
   deleteDoc,
   where,
+  arrayRemove,
 } from "firebase/firestore";
 import { formatDistanceToNow } from "date-fns";
 ;
@@ -380,7 +381,7 @@ const addReply = async (postId, commentId, text, authorId) => {
 };
 
 // Add a new group to Firestore
-const addGroup = async (groupName, isPrivate, adminId) => {
+export const addGroup = async (groupName, isPrivate, adminId) => {
   try {
     const groupRef = await addDoc(collection(db, "groups"), {
       name: groupName,
@@ -389,7 +390,7 @@ const addGroup = async (groupName, isPrivate, adminId) => {
       members: [adminId], // Add the admin as the first member
       joinRequests: [], // Initialize with no join requests
       messages: [], // Initialize with no messages
-      createdAt: serverTimestamp(), // Add a timestamp
+      createdAt: serverTimestamp(), // Add a timestamp for when the group was created
     });
 
     console.log("Group added with ID:", groupRef.id);
@@ -401,19 +402,20 @@ const addGroup = async (groupName, isPrivate, adminId) => {
 };
 
 // Fetch all groups from Firestore
-const fetchGroups = async () => {
+export const fetchGroups = async () => {
   try {
-    const q = query(collection(db, "groups"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "groups"));
     const querySnapshot = await getDocs(q);
 
     const groups = querySnapshot.docs.map((doc) => ({
       id: doc.id,
       name: doc.data().name || "Unnamed Group",
-      members: Array.isArray(doc.data().members) ? doc.data().members : [], // Ensure members is an array
+      members: Array.isArray(doc.data().members) ? doc.data().members : [],
       isPrivate: doc.data().isPrivate || false,
       adminId: doc.data().adminId || "",
-      joinRequests: doc.data().joinRequests || [], // Default to an empty array if joinRequests is missing
-     messages: Array.isArray(doc.data().messages) ? doc.data().messages : [], // Ensure messages is an array
+      joinRequests: doc.data().joinRequests || [],
+      messages: Array.isArray(doc.data().messages) ? doc.data().messages : [],
+      createdAt: doc.data().createdAt?.toDate() || new Date(), // Convert Firestore timestamp to Date
     }));
 
     console.log("Fetched groups:", groups);
@@ -578,6 +580,24 @@ const onRequestToJoinGroup = async (groupId, userId) => {
   }
 };
 
+// Fetch join requests for a specific group
+const fetchJoinRequests = async (groupId) => {
+  try {
+    const groupRef = doc(db, "groups", groupId);
+    const groupSnapshot = await getDoc(groupRef);
+
+    if (!groupSnapshot.exists()) {
+      throw new Error("Group not found");
+    }
+
+    const groupData = groupSnapshot.data();
+    return groupData.joinRequests || [];
+  } catch (error) {
+    console.error("Error fetching join requests:", error);
+    throw error;
+  }
+};
+
 // Delete a post permanently
 export const deletePost = async (postId) => {
   try {
@@ -648,7 +668,65 @@ const fetchUserPosts = async (userId) => {
   }
 };
 
+export const acceptJoinRequest = async (groupId, userId) => {
+  try {
+    const groupRef = doc(db, "groups", groupId);
 
+    // Fetch the current group data
+    const groupSnapshot = await getDoc(groupRef);
+    const groupData = groupSnapshot.data();
+
+    // Update the joinRequests array to set the status to "accepted"
+    const updatedJoinRequests = groupData.joinRequests.map((request) =>
+      request.userId === userId ? { ...request, status: "accepted" } : request
+    );
+
+    // Update Firestore
+    await updateDoc(groupRef, {
+      joinRequests: updatedJoinRequests,
+      members: arrayUnion(userId), // Add the user to the members array
+    });
+
+    console.log(`User ${userId} accepted into group ${groupId}`);
+  } catch (error) {
+    console.error("Error accepting join request:", error);
+    throw error;
+  }
+};
+
+export const rejectJoinRequest = async (groupId, userId) => {
+  try {
+    const groupRef = doc(db, "groups", groupId);
+
+    // Remove the join request
+    await updateDoc(groupRef, {
+      joinRequests: arrayRemove({ userId, status: "requested" }),
+    });
+
+    // Notify the user
+    await addNotification(
+      userId,
+      "requestRejected",
+      "Your request to join the group has been rejected."
+    );
+
+    console.log(`User ${userId}'s request to join group ${groupId} rejected`);
+  } catch (error) {
+    console.error("Error rejecting join request:", error);
+    throw error;
+  }
+};
+
+export const deleteNotification = async (notificationId) => {
+  try {
+    const notificationRef = doc(db, "notifications", notificationId);
+    await deleteDoc(notificationRef);
+    console.log(`Notification ${notificationId} deleted successfully.`);
+  } catch (error) {
+    console.error("Error deleting notification:", error);
+    throw error;
+  }
+};
 
 export {
   fetchPosts,
@@ -662,17 +740,16 @@ export {
   addHiddenPost,
   fetchHiddenPosts,
   addReply,
-  addGroup,
-  fetchGroups,
   reportContent,
   createUserDocument,
   addNotification,
   onRequestToJoinGroup,
   fetchUserNotifications,
   fetchUserPosts,
-    pinPost,
-    updatePostText,
-      onJoinGroup,
+  pinPost,
+  updatePostText,
+  onJoinGroup,
+  fetchJoinRequests
 
 
 

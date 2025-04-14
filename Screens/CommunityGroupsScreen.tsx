@@ -1,4 +1,4 @@
- import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,8 +10,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
 import { fetchGroups } from "../handle/firestore";
-import { doc, updateDoc, arrayRemove, deleteDoc } from "firebase/firestore";
+import { doc, updateDoc, arrayRemove, deleteDoc, arrayUnion } from "firebase/firestore";
 import { db } from "../handle/firebase";
+import { formatDistanceToNowStrict } from "date-fns";
 
 interface JoinRequest {
   userId: string;
@@ -32,6 +33,7 @@ interface CommunityGroup {
   adminId: string;
   joinRequests: JoinRequest[];
   messages?: GroupMessage[];
+  createdAt: string;
 }
 
 interface CommunityGroupsScreenProps {
@@ -65,7 +67,9 @@ const CommunityGroupsScreen: React.FC<CommunityGroupsScreenProps> = ({
       }
     };
     loadGroups();
-  }, [setGroups]);  const handleLeaveGroup = async (groupId: string) => {
+  }, [setGroups]);
+
+  const handleLeaveGroup = async (groupId: string) => {
     try {
       await updateDoc(doc(db, "groups", groupId), {
         members: arrayRemove(userId),
@@ -86,6 +90,26 @@ const CommunityGroupsScreen: React.FC<CommunityGroupsScreenProps> = ({
       setGroups(updatedGroups);
     } catch (error) {
       Alert.alert("Error", "Could not delete the group.");
+    }
+  };
+
+  const handleEnterPublicGroup = async (groupId: string) => {
+    try {
+      const groupRef = doc(db, "groups", groupId);
+
+      // Add the user to the group's members array
+      await updateDoc(groupRef, {
+        members: arrayUnion(userId),
+      });
+
+      // Fetch updated groups and update the state
+      const updatedGroups = await fetchGroups();
+      setGroups(updatedGroups);
+
+      Alert.alert("Success", "You have joined the group.");
+    } catch (error) {
+      console.error("Error joining public group:", error);
+      Alert.alert("Error", "Failed to join the group. Please try again.");
     }
   };
 
@@ -125,77 +149,99 @@ const CommunityGroupsScreen: React.FC<CommunityGroupsScreenProps> = ({
       </View>
     );
   };
+
   const renderGroupItem = ({ item }: { item: CommunityGroup }) => {
     const userRequest = item.joinRequests?.find((req) => req.userId === userId);
     const isMember = item.members.includes(userId);
+    const isAdmin = item.adminId === userId;
     const hasAccess = item.isPrivate ? isMember || userRequest?.status === "accepted" : true;
 
- const handleJoin = async () => {
-  try {
-    if (item.isPrivate) {
-      await onRequestToJoinGroup(item.id, userId);
-      Alert.alert("Request Sent", "Your request to join the group has been sent.");
-    } else {
-      await onJoinGroup(item.id, userId);
-Alert.alert("Joined Group", `You have joined the group: ${item.name}`);
-const updatedGroups = await fetchGroups();
-setGroups(updatedGroups);
-
-    }
-  } catch (err) {
-    Alert.alert("Error", "Something went wrong. Please try again.");
-  }
-};
+    const handleJoin = async () => {
+      try {
+        if (item.isPrivate) {
+          await onRequestToJoinGroup(item.id, userId);
+          Alert.alert("Request Sent", "Your request to join the group has been sent.");
+        } else {
+          await handleEnterPublicGroup(item.id);
+        }
+      } catch (err) {
+        Alert.alert("Error", "Something went wrong. Please try again.");
+      }
+    };
 
     return (
       <Swipeable renderRightActions={() => renderRightActions(item)}>
-        <View style={styles.groupItem}>
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            onPress={() => {
-              if (hasAccess) {
-                onNavigate("commentCommunityGroup", {
-                  ...item,
-                  messages: item.messages ?? [],
-                });
-              } else {
-                Alert.alert("Access Denied", "Please join the group first.");
-              }
-            }}
-          >
+        <View style={styles.groupCard}>
+          {/* Lock Icon for Private Groups */}
+          {item.isPrivate && (
+            <Ionicons
+              name="lock-closed-outline"
+              size={20}
+              color="#4a2c2a"
+              style={styles.lockIcon}
+            />
+          )}
+
+          <View style={styles.groupCardHeader}>
             <Text style={styles.groupName}>{item.name}</Text>
-            <Text style={styles.membersText}>{item.members.length} members</Text>
-            {item.isPrivate && <Text style={styles.privateTag}>Private</Text>}
-            {selectedTab === "myGroups" && userRequest && (
-              <Text
-                style={[
-                  styles.statusTag,
-                  userRequest.status === "requested" && styles.requestedTag,
-                  userRequest.status === "accepted" && styles.acceptedTag,
-                  userRequest.status === "denied" && styles.deniedTag,
-                ]}
-              >
-                {userRequest.status.charAt(0).toUpperCase() + userRequest.status.slice(1)}
-              </Text>
+            {isAdmin && (
+              <Text style={styles.adminBadge}>Created by You</Text>
             )}
-          </TouchableOpacity>
-
-          {!isMember && selectedTab !== "myGroups" && (
-            <TouchableOpacity style={styles.joinButton} onPress={handleJoin}>
-              <Text style={styles.joinButtonText}>
-                {item.isPrivate ? "Request to Join" : "Join"}
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {selectedTab === "myGroups" && isMember && (
-            <TouchableOpacity
-              style={[styles.joinButton, { backgroundColor: "#d9534f" }]}
-              onPress={() => handleLeaveGroup(item.id)}
+          </View>
+          <Text style={styles.groupMembers}>
+            {item.members.length} {item.members.length === 1 ? "member" : "members"}
+          </Text>
+          <Text style={styles.groupCreatedAt}>
+            Created {formatDistanceToNowStrict(new Date(item.createdAt), { addSuffix: true })}
+          </Text>
+          {userRequest && (
+            <Text
+              style={[
+                styles.statusTag,
+                userRequest.status === "requested" && styles.requestedTag,
+                userRequest.status === "accepted" && styles.acceptedTag,
+                userRequest.status === "denied" && styles.deniedTag,
+              ]}
             >
-              <Text style={styles.joinButtonText}>Leave</Text>
-            </TouchableOpacity>
+              {userRequest.status.charAt(0).toUpperCase() + userRequest.status.slice(1)}
+            </Text>
           )}
+          <View style={styles.groupCardFooter}>
+            {hasAccess ? (
+              <TouchableOpacity
+                style={styles.accessButton}
+                onPress={() =>
+                  onNavigate("commentCommunityGroup", {
+                    ...item,
+                    messages: item.messages ?? [],
+                  })
+                }
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={20} color="white" />
+                <Text style={styles.accessButtonText}>Enter</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.joinButton} onPress={handleJoin}>
+                <Ionicons
+                  name={item.isPrivate ? "lock-closed-outline" : "person-add-outline"}
+                  size={20}
+                  color="white"
+                />
+                <Text style={styles.joinButtonText}>
+                  {item.isPrivate ? "Request to Join" : "Join"}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {isAdmin && (
+              <TouchableOpacity
+                style={styles.manageRequestsButton}
+                onPress={() => onNavigate("manageJoinRequests", { groupId: item.id })}
+              >
+                <Ionicons name="list-outline" size={20} color="white" style={styles.manageRequestsIcon} />
+                <Text style={styles.manageRequestsButtonText}>Manage Requests</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </Swipeable>
     );
@@ -218,15 +264,12 @@ setGroups(updatedGroups);
             group.adminId !== userId &&
             !group.joinRequests.some((req) => req.userId === userId)
         )
-      : selectedTab === "joined"
-      ? groups.filter((group) => group.members.includes(userId))
       : groups.filter(
           (group) =>
-            group.members.includes(userId) ||
-            group.adminId === userId ||
-            group.joinRequests.some((req) => req.userId === userId)
-        );
- return (
+            group.members.includes(userId) || group.adminId === userId
+        ); // Combine joined and created groups for "My Groups"
+
+  return (
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => onNavigate("publicChat")} style={styles.backButton}>
@@ -236,7 +279,7 @@ setGroups(updatedGroups);
       </View>
 
       <View style={styles.tabs}>
-        {["public", "private", "myGroups", "joined"].map((tabKey) => (
+        {["public", "private", "myGroups"].map((tabKey) => (
           <TouchableOpacity
             key={tabKey}
             style={[styles.tab, selectedTab === tabKey && styles.activeTab]}
@@ -247,9 +290,7 @@ setGroups(updatedGroups);
                 ? "Public Groups"
                 : tabKey === "private"
                 ? "Private Groups"
-                : tabKey === "myGroups"
-                ? "My Groups"
-                : "Joined Groups"}
+                : "My Groups"}
             </Text>
           </TouchableOpacity>
         ))}
@@ -314,25 +355,91 @@ const styles = StyleSheet.create({
     textAlign: "center",
     flexWrap: "wrap",
   },
-  groupItem: {
-    backgroundColor: "#e8d7c2",
-    padding: 15,
+  groupCard: {
+    backgroundColor: "#ffffff",
     borderRadius: 10,
+    padding: 15,
     marginHorizontal: 15,
     marginVertical: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
+    position: "relative", // Allow absolute positioning for the lock icon
+  },
+  lockIcon: {
+    position: "absolute",
+    top: -10, // Centered vertically at the top
+    left: "50%", // Horizontally centered relative to the card
+    transform: [{ translateX: -0.5 * 20 }], // Dynamically center based on width
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 5,
+    elevation: 3,
+  },
+  groupCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between", // Move "Created by You" to the right
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  groupName: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#4a2c2a",
+  },
+  adminBadge: {
+    backgroundColor: "#FFD700",
+    color: "#4a2c2a",
+    fontSize: 12,
+    fontWeight: "bold",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 5,
+  },
+  groupMembers: {
+    fontSize: 14,
+    color: "#777",
+    marginBottom: 10,
+  },
+  groupCreatedAt: {
+    fontSize: 12,
+    color: "#777",
+    marginBottom: 10,
+  },
+  groupCardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginTop: 10,
   },
-  groupName: { fontSize: 18, fontWeight: "bold", color: "#4a2c2a" },
-  membersText: { fontSize: 14, color: "#4a2c2a" },
-  privateTag: { fontSize: 12, color: "red", fontStyle: "italic" },
   joinButton: {
-    backgroundColor: "#a4c3d2",
-    padding: 10,
-    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#4a90e2",
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 5,
   },
-  joinButtonText: { color: "white", fontWeight: "bold" },
+  joinButtonText: {
+    color: "white",
+    fontWeight: "bold",
+    marginLeft: 5,
+  },
+  accessButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#32CD32",
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 5,
+  },
+  accessButtonText: {
+    color: "white",
+    fontWeight: "bold",
+    marginLeft: 5,
+  },
   addButton: {
     position: "absolute",
     bottom: 120,
@@ -370,9 +477,41 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     textAlign: "center",
   },
-  requestedTag: { backgroundColor: "#f0ad4e", color: "white" },
-  acceptedTag: { backgroundColor: "#5cb85c", color: "white" },
-  deniedTag: { backgroundColor: "#d9534f", color: "white" },
+  requestedTag: {
+    backgroundColor: "#f0ad4e",
+    color: "white",
+  },
+  acceptedTag: {
+    backgroundColor: "#5cb85c",
+    color: "white",
+  },
+  deniedTag: {
+    backgroundColor: "#d9534f",
+    color: "white",
+  },
+  manageRequestsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#4a90e2", // Use a modern blue color
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 25, // Rounded corners
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 3, // Add elevation for a subtle shadow
+    marginTop: 10,
+  },
+  manageRequestsIcon: {
+    marginRight: 8, // Add spacing between the icon and text
+  },
+  manageRequestsButtonText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
 });
 
 export default CommunityGroupsScreen;

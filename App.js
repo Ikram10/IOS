@@ -12,6 +12,7 @@ import CommentCommunityGroupScreen from "./Screens/CommentCommunityGroup";
 import NotificationsScreen from "./Screens/NotificationsScreen";
 import WaitingForVerificationScreen from "./Screens/WaitingForVerificationScreen";
 import ForgotPasswordScreen from "./Screens/ForgotPasswordScreen";
+import ManageJoinRequestsScreen from "./Screens/ManageJoinRequestsScreen";
 import { doc, updateDoc, arrayUnion, getDoc } from "firebase/firestore";
 import { db } from "./handle/firebase";
 import { addNotification, fetchUserNotifications } from "./handle/firestore";
@@ -22,6 +23,7 @@ export default function App() {
   const [groups, setGroups] = useState([]);
   const [selectedPost, setSelectedPost] = useState(null);
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [userId, setUserId] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [fromTab, setFromTab] = useState(null);
@@ -89,6 +91,9 @@ export default function App() {
     } else if (nextScreen === "notifications") {
       setFromTab(data?.initialTab || null);
       setScreen("notifications");
+    } else if (nextScreen === "manageJoinRequests" && data) {
+      setSelectedGroupId(data.groupId); // Pass the group ID to the screen
+      setScreen("manageJoinRequests");
     } else {
       setScreen(nextScreen);
     }
@@ -189,6 +194,11 @@ export default function App() {
                 )
               );
             }}
+          />
+        ) : screen === "manageJoinRequests" ? (
+          <ManageJoinRequestsScreen
+            groupId={selectedGroupId}
+            onBack={() => setScreen("communityGroups")}
           />
         ) : null}
       </View>

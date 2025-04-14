@@ -16,6 +16,7 @@ import {
   fetchComments,
   fetchPosts,
   addNotification,
+  deleteNotification,
 } from "../handle/firestore";
 import { formatDistanceToNow } from "date-fns";
 import { doc, updateDoc, arrayUnion, getDoc } from "firebase/firestore";
@@ -133,30 +134,47 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
     }
   };
 
-  const handleAcceptJoinRequest = async (groupId: string, requesterId: string) => {
+  const handleAcceptJoinRequest = async (groupId: string, requesterId: string, notificationId: string) => {
     try {
+      // Add the user to the group members
       await updateDoc(doc(db, "groups", groupId), {
         members: arrayUnion(requesterId),
       });
 
+      // Notify the requester
       await addNotification(
         requesterId,
         "requestGranted",
         "Your request to join the group was accepted."
       );
+
+      // Delete the notification
+      await deleteNotification(notificationId);
+
+      // Remove the notification from the local list
+      setLocalNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+
       Alert.alert("Accepted", "User has been added.");
     } catch (error) {
       Alert.alert("Error", "Could not accept join request.");
     }
   };
 
-  const handleDenyJoinRequest = async (requesterId: string) => {
+  const handleDenyJoinRequest = async (requesterId: string, notificationId: string) => {
     try {
+      // Notify the requester
       await addNotification(
         requesterId,
         "requestDenied",
         "Your request to join the group was denied."
       );
+
+      // Delete the notification
+      await deleteNotification(notificationId);
+
+      // Remove the notification from the local list
+      setLocalNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+
       Alert.alert("Denied", "User has been notified.");
     } catch (error) {
       Alert.alert("Error", "Could not deny join request.");
@@ -288,13 +306,13 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
             <View style={styles.actions}>
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: "#4caf50" }]}
-                onPress={() => handleAcceptJoinRequest(item.groupId, item.requesterId)}
+                onPress={() => handleAcceptJoinRequest(item.groupId, item.requesterId, item.id)}
               >
                 <Ionicons name="checkmark-outline" size={20} color="white" />
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: "#f44336" }]}
-                onPress={() => handleDenyJoinRequest(item.requesterId)}
+                onPress={() => handleDenyJoinRequest(item.requesterId, item.id)}
               >
                 <Ionicons name="close-outline" size={20} color="white" />
               </TouchableOpacity>
