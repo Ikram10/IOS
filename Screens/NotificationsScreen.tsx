@@ -6,27 +6,32 @@ import {
   FlatList,
   StyleSheet,
   Alert,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
   deletePost,
   fetchUserPosts,
-  addNotification,
+  fetchUserNotifications,
   fetchComments,
   fetchPosts,
+  addNotification,
 } from "../handle/firestore";
 import { formatDistanceToNow } from "date-fns";
-import { doc, updateDoc, arrayUnion } from "firebase/firestore";
+import { doc, updateDoc, arrayUnion, getDoc } from "firebase/firestore";
 import { db } from "../handle/firebase";
 
 interface Notification {
   id: string;
   type: string;
   text: string;
-  timestamp: number;
+  message: string;
+  timestamp: Date; // Ensure this matches the `toDate()` conversion
+  postId?: string; // Add postId to link notifications to posts
   groupId?: string;
   requesterId?: string;
   muted?: boolean;
+  read?: boolean;
 }
 
 interface Post {
@@ -62,6 +67,8 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [postsRepliedTo, setPostsRepliedTo] = useState<Post[]>([]);
   const [pinnedPosts, setPinnedPosts] = useState<Post[]>([]);
+  const [localNotifications, setLocalNotifications] = useState<Notification[]>(notifications);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (initialTab && ["notifications", "posts", "replies", "pinned"].includes(initialTab)) {
@@ -101,6 +108,20 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
 
     fetchData();
   }, [userId]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const refreshedNotifications = await fetchUserNotifications(userId);
+      setLocalNotifications(refreshedNotifications); // Ensure the data matches the Notification interface
+      console.log("Notifications refreshed:", refreshedNotifications);
+    } catch (error) {
+      console.error("Error refreshing notifications:", error);
+      Alert.alert("Error", "Failed to refresh notifications. Please try again.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleDeletePost = async (postId: string) => {
     try {
@@ -183,6 +204,107 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
     </TouchableOpacity>
   );
 
+  const renderNotificationItem = ({ item }: { item: Notification }) => {
+    console.log("Notification item:", item);
+    const isUnread = !item.read;
+
+    const handleNotificationPress = async () => {
+      console.log("Notification clicked:", item); // Log the notification item
+
+      if (item.type === "comment" && item.groupId) {
+        console.log("Navigating to group post with groupId:", item.groupId);
+        onNavigate("commentCommunityGroup", { groupId: item.groupId });
+      } else if (item.type === "comment" || item.type === "post") {
+        const postId = item.postId || item.id; // Use postId or fallback to item.id
+        console.log("Looking for post with postId:", postId);
+
+        let post = posts.find((p) => p.id === postId);
+        console.log("Post found in local posts array:", post);
+
+        if (!post) {
+          try {
+            console.log("Fetching post dynamically from Firestore...");
+            const postRef = doc(db, "posts", postId);
+            const postSnapshot = await getDoc(postRef);
+
+            if (postSnapshot.exists()) {
+              const postData = postSnapshot.data();
+              post = {
+                id: postSnapshot.id,
+                text: postData.text || "No content available",
+                authorId: postData.authorId || "Unknown",
+                community: postData.community || "General",
+                timestamp: postData.timestamp?.toDate?.() || new Date(),
+              };
+              console.log("Post fetched from Firestore:", post);
+            } else {
+              console.error("Post not found in Firestore.");
+              Alert.alert("Error", "Post not found.");
+              return;
+            }
+          } catch (error) {
+            console.error("Error fetching post from Firestore:", error);
+            Alert.alert("Error", "Failed to fetch the post. Please try again.");
+            return;
+          }
+        }
+
+        console.log("Navigating to commentsPost screen with post:", post);
+        onNavigate("commentsPost", { ...post, fromTab: selectedTab });
+      } else {
+        console.log("Unsupported notification type:", item.type);
+        Alert.alert("Info", "This notification type is not supported for navigation.");
+      }
+    };
+
+    return (
+      <TouchableOpacity onPress={handleNotificationPress}>
+        <View style={[styles.notificationCard, isUnread && styles.unreadCard]}>
+          <View style={styles.notificationContent}>
+            <Ionicons
+              name={
+                item.type === "comment"
+                  ? "chatbubble-outline"
+                  : item.type === "joinRequest"
+                  ? "person-add-outline"
+                  : "notifications-outline"
+              }
+              size={24}
+              color={isUnread ? "#4a90e2" : "#999"}
+              style={styles.icon}
+            />
+            <View style={styles.textContainer}>
+              <Text style={styles.notificationText}>
+                {item.message || "No details available"}
+              </Text>
+              <Text style={styles.timestamp}>
+                {item.timestamp
+                  ? formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })
+                  : "Unknown time"}
+              </Text>
+            </View>
+          </View>
+          {item.type === "joinRequest" && item.groupId && item.requesterId && (
+            <View style={styles.actions}>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: "#4caf50" }]}
+                onPress={() => handleAcceptJoinRequest(item.groupId, item.requesterId)}
+              >
+                <Ionicons name="checkmark-outline" size={20} color="white" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: "#f44336" }]}
+                onPress={() => handleDenyJoinRequest(item.requesterId)}
+              >
+                <Ionicons name="close-outline" size={20} color="white" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   const renderTabContent = () => {
     const dataMap: { [key: string]: Post[] } = {
       posts: userPosts,
@@ -193,29 +315,12 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
     if (selectedTab === "notifications") {
       return (
         <FlatList
-          data={notifications}
+          data={localNotifications}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={styles.notificationItem}>
-              <Text style={styles.notificationText}>{item.text}</Text>
-              {item.type === "joinRequest" && item.groupId && item.requesterId && (
-                <View style={{ flexDirection: "row", marginTop: 10 }}>
-                  <TouchableOpacity
-                    style={[styles.button, { backgroundColor: "#5cb85c" }]}
-                    onPress={() => handleAcceptJoinRequest(item.groupId!, item.requesterId!)}
-                  >
-                    <Text style={{ color: "white" }}>Accept</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.button, { backgroundColor: "#d9534f", marginLeft: 10 }]}
-                    onPress={() => handleDenyJoinRequest(item.requesterId!)}
-                  >
-                    <Text style={{ color: "white" }}>Deny</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          )}
+          renderItem={renderNotificationItem}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
           ListEmptyComponent={<Text style={styles.emptyText}>No notifications yet.</Text>}
         />
       );
@@ -300,7 +405,45 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     margin: 10,
   },
-  notificationText: { color: "#4a2c2a" },
+  notificationCard: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 15,
+    marginVertical: 10,
+    marginHorizontal: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  unreadCard: {
+    borderLeftWidth: 5,
+    borderLeftColor: "#4a90e2",
+  },
+  notificationContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  icon: {
+    marginRight: 15,
+  },
+  textContainer: {
+    flex: 1,
+  },
+  notificationText: {
+    fontSize: 16,
+    color: "#333",
+    marginBottom: 5,
+  },
+  timestamp: {
+    fontSize: 12,
+    color: "#999",
+  },
   postCard: {
     backgroundColor: "#ffffff",
     borderRadius: 10,
@@ -347,7 +490,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 10,
   },
-  timestamp: { fontSize: 12, color: "gray" },
   emptyText: {
     textAlign: "center",
     fontSize: 16,
@@ -375,6 +517,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 15,
     borderRadius: 6,
+  },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  actionButton: {
+    marginLeft: 10,
+    padding: 8,
+    borderRadius: 5,
   },
 });
 

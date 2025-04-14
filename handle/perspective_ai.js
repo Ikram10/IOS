@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const PERSPECTIVE_API_KEY = "AIzaSyBG-VGZzGPrNUvf1X9bgSD2W2Hln9qWBBg";
+const PERSPECTIVE_API_KEY = "AIzaSyBo63UpsP9BhSKRfKJBCCWROo8yndyzyz8";
 
 /**
  * Function to analyze content using Perspective API

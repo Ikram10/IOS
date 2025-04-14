@@ -27,30 +27,14 @@ const CommentsPostScreen = ({ post, userId, onBack }) => {
   const [userMap, setUserMap] = useState({});
 
   useEffect(() => {
-    loadComments();
-  }, [post.id]);
+    if (post?.id) {
+      loadComments();
+    }
+  }, [post?.id]);
 
   const loadComments = async () => {
     try {
       const fetchedComments = await fetchComments(post.id);
-
-      const map = {};
-      let counter = 1;
-
-      for (const comment of fetchedComments) {
-        if (comment.authorId && !map[comment.authorId]) {
-          map[comment.authorId] = `Anonymous #${counter++}`;
-        }
-        if (comment.replies?.length > 0) {
-          for (const reply of comment.replies) {
-            if (reply.authorId && !map[reply.authorId]) {
-              map[reply.authorId] = `Anonymous #${counter++}`;
-            }
-          }
-        }
-      }
-
-      setUserMap(map);
       setComments(fetchedComments);
     } catch (error) {
       console.error("Error loading comments:", error);

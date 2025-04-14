@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, StatusBar, Alert } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler"; // ✅ REQUIRED FOR SWIPE
 import SplashScreen from "./Screens/SplashScreen";
@@ -14,7 +14,7 @@ import WaitingForVerificationScreen from "./Screens/WaitingForVerificationScreen
 import ForgotPasswordScreen from "./Screens/ForgotPasswordScreen";
 import { doc, updateDoc, arrayUnion, getDoc } from "firebase/firestore";
 import { db } from "./handle/firebase";
-import { addNotification } from "./handle/firestore";
+import { addNotification, fetchUserNotifications } from "./handle/firestore";
 
 export default function App() {
   const [screen, setScreen] = useState("splash");
@@ -26,11 +26,28 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [fromTab, setFromTab] = useState(null);
 
+  useEffect(() => {
+    const loadNotifications = async () => {
+      if (userId) {
+        try {
+          const fetchedNotifications = await fetchUserNotifications(userId);
+          console.log("Fetched notifications:", fetchedNotifications);
+          setNotifications(fetchedNotifications);
+        } catch (error) {
+          console.error("Error fetching notifications:", error);
+        }
+      }
+    };
+
+    loadNotifications();
+  }, [userId]);
+
   const handleLoginSuccess = (uid) => {
     if (!uid) {
       Alert.alert("Error", "Failed to retrieve user ID. Please try again.");
       return;
     }
+    console.log("User ID set:", uid); // Add this log
     setUserId(uid);
     setScreen("verification");
   };
@@ -64,10 +81,10 @@ export default function App() {
   const onNavigate = (nextScreen, data) => {
     if (nextScreen === "commentsPost" && data) {
       setFromTab(data.fromTab || null);
-      setSelectedPost(data);
+      setSelectedPost(data); // Pass the post data to the CommentsPostScreen
       setScreen("commentsPost");
     } else if (nextScreen === "commentCommunityGroup" && data) {
-      setSelectedGroup(data);
+      setSelectedGroup(data); // Pass the group data to the CommentCommunityGroupScreen
       setScreen("commentCommunityGroup");
     } else if (nextScreen === "notifications") {
       setFromTab(data?.initialTab || null);

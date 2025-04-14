@@ -14,6 +14,7 @@ import {
   arrayUnion,
   setDoc,
   deleteDoc,
+  where,
 } from "firebase/firestore";
 import { formatDistanceToNow } from "date-fns";
 ;
@@ -134,16 +135,17 @@ const addComment = async (postId, text, authorId) => {
     const postSnapshot = await getDoc(postRef);
     const postData = postSnapshot.data();
     if (postData.authorId !== authorId) {
+      console.log(`Adding notification for post author: ${postData.authorId}`);
       await addNotification(
         postData.authorId,
         "comment",
-        "Someone commented on your post."
+        "Someone commented on your post.",
+        { postId } // Include the postId
       );
     }
 
     console.log("Comment added successfully");
-    return commentRef.id; // 👈 Return the actual Firestore ID
-
+    return commentRef.id;
   } catch (error) {
     console.error("Error adding comment:", error);
     throw error;
@@ -172,7 +174,7 @@ const fetchComments = async (postId) => {
       return {
         id: doc.id,
         text: data.text || "",
-        authorId: data.authorId || "", // ✅ ensures authorId is present
+        authorId: data.authorId || "",
         timestamp,
         timeAgo: formatDistanceToNow(timestamp, { addSuffix: true }),
         replies: repliesWithTimeAgo,
@@ -535,16 +537,16 @@ const createUserDocument = async (userId, userData) => {
 };
 
 // Add a notification for a user
-const addNotification = async (userId, type, message) => {
+const addNotification = async (userId, type, message, additionalData = {}) => {
   try {
     await addDoc(collection(db, "notifications"), {
       userId,
       type,
       message,
       timestamp: serverTimestamp(),
-      read: false, // Mark as unread by default
+      read: false,
+      ...additionalData, // Include additional data like postId or groupId
     });
-    console.log(`Notification added for user ${userId}: ${message}`);
   } catch (error) {
     console.error("Error adding notification:", error);
     throw error;
@@ -587,46 +589,35 @@ export const deletePost = async (postId) => {
   }
 };
 // Fetch notifications for a specific user
-/**
- * @typedef {Object} Notification
- * @property {string} id
- * @property {"upvote"|"downvote"|"reply"|"communityComment"|"joinRequest"} type
- * @property {string} text
- * @property {number} timestamp
- * @property {string} [groupId]
- * @property {string} [requesterId]
- * @property {boolean} [muted]
- */
-
-/**
- * @param {string} userId
- * @returns {Promise<Notification[]>}
- */
 const fetchUserNotifications = async (userId) => {
   try {
-    const snapshot = await getDocs(
-      query(collection(db, "notifications"), orderBy("timestamp", "desc"))
+    const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", userId),
+      orderBy("timestamp", "desc")
     );
 
-    const notifications = snapshot.docs
-      .map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          userId: data.userId, // ✅ include userId in each notification
-          text: data.message || "",
-          timestamp: data.timestamp?.toDate()?.getTime() || Date.now(),
-          type: data.type || "reply",
-          groupId: data.groupId,
-          requesterId: data.requesterId,
-          muted: data.muted ?? false,
-        };
-      })
-      .filter((notif) => notif.userId === userId); // ✅ now filter works properly
+    const snapshot = await getDocs(q);
+
+    const notifications = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        type: data.type || "unknown",
+        text: data.text || "",
+        message: data.message || "",
+        postId: data.postId || undefined, // Include postId
+        timestamp: data.timestamp?.toDate?.() || new Date(),
+        groupId: data.groupId || undefined,
+        requesterId: data.requesterId || undefined,
+        muted: data.muted || false,
+        read: data.read || false,
+      };
+    });
 
     return notifications;
-  } catch (err) {
-    console.error("Error fetching notifications:", err);
+  } catch (error) {
+    console.error("Error fetching notifications:", error);
     return [];
   }
 };

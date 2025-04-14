@@ -2,14 +2,16 @@ import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, getDocs, query, orderBy } from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification } from "firebase/auth";
 
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyCQ9zgcWNwYgQHpntJ9XpkpBINS71FtVzA",
-  authDomain: "uniwhisper-c0f02.firebaseapp.com",
-  projectId: "uniwhisper-c0f02",
-  storageBucket: "uniwhisper-c0f02.firebasestorage.app",
-  messagingSenderId: "327116139157",
-  appId: "1:327116139157:web:4dea9792999c5023c7099c",
-  measurementId: "G-D5T40GR34S"
+  apiKey: "AIzaSyBwyowMUs8UUZDewt2riStrzYa-jA-qNzM",
+  authDomain: "uniwhisper-3feee.firebaseapp.com",
+  projectId: "uniwhisper-3feee",
+  storageBucket: "uniwhisper-3feee.firebasestorage.app",
+  messagingSenderId: "741497912850",
+  appId: "1:741497912850:web:a0729216c33c343287a2cb",
+  measurementId: "G-M00RQQC18N"
 };
 
 // Initialise Firebase

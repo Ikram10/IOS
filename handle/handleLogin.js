@@ -17,16 +17,7 @@ const sendVerificationEmail = async (user) => {
   }
 };
 
-const isValidCityEmail = (email) => {
-  return email.toLowerCase().endsWith("@city.ac.uk");
-};
-
 const handleLogin = async (email, password, onLoginSuccess, setLoading) => {
-  if (!isValidCityEmail(email)) {
-    Alert.alert("Error", "Only @city.ac.uk email addresses are allowed.");
-    return;
-  }
-
   setLoading(true);
 
   try {
@@ -42,7 +33,7 @@ const handleLogin = async (email, password, onLoginSuccess, setLoading) => {
 
     Alert.alert(
       "Success",
-      "Verification email sent. Please check your City email and verify your account."
+      "Verification email sent. Please check your email and verify your account."
     );
     onLoginSuccess(user.uid);
   } catch (error) {
@@ -53,11 +44,6 @@ const handleLogin = async (email, password, onLoginSuccess, setLoading) => {
 };
 
 const handleExistingLogin = async (email, password, onLoginSuccess, setLoading) => {
-  if (!isValidCityEmail(email)) {
-    Alert.alert("Error", "Only @city.ac.uk email addresses are allowed.");
-    return;
-  }
-
   setLoading(true);
 
   try {
@@ -65,7 +51,7 @@ const handleExistingLogin = async (email, password, onLoginSuccess, setLoading) 
     const user = userCredential.user;
 
     if (!user.emailVerified) {
-      Alert.alert("Error", "Your City email is not verified. Please verify before logging in.");
+      Alert.alert("Error", "Your email is not verified. Please verify before logging in.");
       return;
     }
 
