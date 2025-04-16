@@ -5,7 +5,7 @@ import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, se
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyBwyowMUs8UUZDewt2riStrzYa-jA-qNzM",
+  apiKey: "",
   authDomain: "uniwhisper-3feee.firebaseapp.com",
   projectId: "uniwhisper-3feee",
   storageBucket: "uniwhisper-3feee.firebasestorage.app",
